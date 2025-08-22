@@ -1,0 +1,504 @@
+# Resume Tailor AI - Complete Development Guide
+
+## Day 0 (30–60 min) — Accounts & Keys
+
+### Create Projects
+
+1. **Vercel account** (GitHub linked)
+2. **Supabase project** (US-East if possible)
+3. **LLM provider**
+   - OpenAI (easiest) → get API key, or
+   - Google AI Studio (Gemini) → get API key
+
+### GitHub Repo
+
+Create `resume-tailor` (private ok)
+
+---
+
+## Day 1 — Scaffold, Auth, Upload & Parse
+
+### 1) Create the App
+
+```bash
+npx create-next-app@latest resume-tailor --typescript --eslint
+cd resume-tailor
+npm i @supabase/supabase-js tailwindcss postcss autoprefixer zod react-hook-form react-hot-toast
+npx tailwindcss init -p
+```
+
+#### Configure Tailwind
+
+**tailwind.config.js**
+
+```javascript
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  theme: { extend: {} },
+  plugins: [],
+};
+```
+
+- `app/globals.css` – include Tailwind base/components/utilities (CRA template already does)
+- Enable the App Router (default in latest Next)
+
+### 2) Environment Variables
+
+Create `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=...        # from Supabase settings
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...   # from Supabase settings
+OPENAI_API_KEY=...                  # or
+GEMINI_API_KEY=...                  # pick one provider
+```
+
+### 3) Supabase Setup (DB + Auth + Storage)
+
+In Supabase SQL editor, run:
+
+#### Tables
+
+```sql
+-- users come from auth.users; we mirror minimal profile
+create table if not exists profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  full_name text,
+  created_at timestamptz default now()
+);
+
+create table if not exists resumes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  title text,
+  raw_text text,              -- plain extracted text
+  parsed_json jsonb,          -- { sections: { summary, experience[], skills[] } }
+  storage_path text,          -- path in storage bucket
+  created_at timestamptz default now()
+);
+
+create table if not exists job_posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  company text,
+  title text,
+  jd_text text,               -- pasted job description
+  created_at timestamptz default now()
+);
+
+create table if not exists tailorings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  resume_id uuid references resumes(id) on delete cascade,
+  job_post_id uuid references job_posts(id) on delete cascade,
+  ats_score numeric,          -- 0..100
+  tailored_json jsonb,        -- {summary, skills[], experience[]...}
+  cover_letter_md text,
+  created_at timestamptz default now()
+);
+```
+
+#### RLS (Row-Level Security)
+
+```sql
+alter table profiles enable row level security;
+alter table resumes enable row level security;
+alter table job_posts enable row level security;
+alter table tailorings enable row level security;
+
+create policy "own profile" on profiles
+for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own resumes" on resumes
+for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own job_posts" on job_posts
+for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own tailorings" on tailorings
+for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+#### Storage
+
+Make bucket `resumes` (private)
+
+### 4) Supabase Client
+
+**lib/supabase.ts**
+
+```typescript
+import { createClient } from "@supabase/supabase-js";
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+```
+
+### 5) Basic Auth (Email Magic Link)
+
+**app/(auth)/login/page.tsx**
+
+- Simple email input → `supabase.auth.signInWithOtp({ email })`
+- After login, route to `/dashboard`
+
+### 6) Upload & Parse Resume
+
+Install parsers:
+
+```bash
+npm i pdf-parse mammoth
+```
+
+#### API Route
+
+**app/api/parse-resume/route.ts**
+
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import pdf from "pdf-parse";
+import mammoth from "mammoth";
+
+export const runtime = "nodejs"; // ensure Node runtime on Vercel
+
+export async function POST(req: NextRequest) {
+  const form = await req.formData();
+  const file = form.get("file") as File;
+  if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  let text = "";
+  if (file.name.endsWith(".pdf")) {
+    const data = await pdf(buf);
+    text = data.text;
+  } else if (file.name.endsWith(".docx")) {
+    const { value } = await mammoth.extractRawText({ buffer: buf });
+    text = value;
+  } else {
+    text = buf.toString("utf8"); // .txt fallback
+  }
+
+  // naive section split; refine later
+  return NextResponse.json({ text });
+}
+```
+
+#### UI
+
+**app/dashboard/page.tsx**
+
+Two panels:
+
+1. **Resume**: upload (PDF/DOCX/TXT) → calls `/api/parse-resume` → show extracted text → "Save Resume"
+2. **Job Description**: textarea paste → "Save JD"
+
+Save to DB: call Supabase JS insert into `resumes` and `job_posts`
+
+### Day 1 Acceptance ✅
+
+Can log in, upload resume, parse text, paste JD, both saved to DB and visible on dashboard.
+
+---
+
+## Day 2 — Tailoring Engine (LLM), ATS Score, Diff UI
+
+### 1) LLM Wiring
+
+Pick provider:
+
+#### OpenAI
+
+```bash
+npm i openai
+```
+
+**lib/llm.ts**
+
+```typescript
+export type TailorRequest = {
+  resumeText: string;
+  jdText: string;
+  targetTone?: "concise" | "impactful" | "academic";
+};
+
+export async function tailorWithOpenAI(req: TailorRequest) {
+  const OpenAI = (await import("openai")).default;
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+  const system = `You are an expert career coach and technical writer.
+Return strict JSON. Improve clarity, quantify impact, and align with JD keywords.
+Schema:
+{
+  "summary": string,
+  "skills": string[],
+  "experience": [{ "original": string, "rewritten": string, "reason": string }],
+  "ats_keywords": string[],
+  "cover_letter_md": string
+}`;
+
+  const user = `
+JOB DESCRIPTION:
+${req.jdText}
+
+RESUME (RAW):
+${req.resumeText}
+
+Instructions:
+1) Extract top ATS keywords from JD.
+2) Rewrite resume bullets to align with JD—keep truthful, quantify impact where reasonable, prefer action verbs.
+3) Keep technical stack accurate; do NOT invent tech.
+4) Return JSON exactly as schema.
+`;
+
+  const completion = await client.chat.completions.create({
+    model: "gpt-4o-mini", // or gpt-4o
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.2,
+  });
+
+  const content = completion.choices[0].message?.content ?? "{}";
+  return JSON.parse(content);
+}
+```
+
+#### Gemini (Alternative)
+
+```bash
+npm i @google/generative-ai
+```
+
+**lib/llm-gemini.ts** (similar contract). Use `GoogleGenerativeAI` and `responses[0].text()` then `JSON.parse`.
+
+### 2) Tailor API
+
+**app/api/tailor/route.ts**
+
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { tailorWithOpenAI } from "@/lib/llm";
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { resumeText, jdText } = body || {};
+  if (!resumeText || !jdText)
+    return NextResponse.json({ error: "Missing" }, { status: 400 });
+
+  try {
+    const result = await tailorWithOpenAI({ resumeText, jdText });
+    // compute ATS score quickly = overlap of JD keywords & tailored skills
+    const jdSet = new Set(
+      result.ats_keywords.map((s: string) => s.toLowerCase())
+    );
+    const skillHit = (result.skills || []).filter((s: string) =>
+      jdSet.has(s.toLowerCase())
+    ).length;
+    const atsScore = Math.round((skillHit / Math.max(1, jdSet.size)) * 100);
+
+    return NextResponse.json({ ...result, atsScore });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e.message || "LLM error" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### 3) Diff View UI
+
+Install a tiny diff helper:
+
+```bash
+npm i diff --save
+```
+
+**components/BulletDiff.tsx**
+
+```typescript
+"use client";
+import { diffWords } from "diff";
+
+export default function BulletDiff({
+  original,
+  rewritten,
+}: {
+  original: string;
+  rewritten: string;
+}) {
+  const parts = diffWords(original || "", rewritten || "");
+  return (
+    <p className="text-sm leading-6">
+      {parts.map((p, i) => (
+        <span
+          key={i}
+          className={
+            p.added
+              ? "bg-green-200"
+              : p.removed
+              ? "bg-red-200 line-through"
+              : ""
+          }
+        >
+          {p.value}
+        </span>
+      ))}
+    </p>
+  );
+}
+```
+
+### 4) Dashboard Actions
+
+On "Tailor Resume" click:
+
+1. Load latest resume + JD from DB
+2. POST to `/api/tailor`
+3. Render:
+   - **ATS Score** (big number + simple note)
+   - **Summary** (suggested)
+   - **Skills** (chips)
+   - **Experience** with original vs rewritten using `<BulletDiff/>`
+   - **Cover letter** (Markdown) preview
+4. Add "Accept rewrite" toggles per bullet → build final tailored version (client state)
+5. "Save tailoring" → insert into `tailorings` with the JSON and `ats_score`
+
+### Day 2 Acceptance ✅
+
+- Tailor pipeline works end-to-end
+- You can see ATS score, diffs, and a draft cover letter
+- Tailoring saved to DB
+
+---
+
+## Day 3 — Export, Polish, Deploy, Demo
+
+### 1) Export (PDF & DOCX)
+
+Fastest path: DOCX via docx npm, and a PDF via client print-to-PDF.
+
+```bash
+npm i docx file-saver
+```
+
+**app/api/export-docx/route.ts** (server generates .docx from accepted state or from saved tailoring)
+
+```typescript
+import { NextRequest } from "next/server";
+import { Document, Packer, Paragraph, TextRun } from "docx";
+
+export async function POST(req: NextRequest) {
+  const { summary, skills, experience } = await req.json();
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: "Summary", bold: true })],
+          }),
+          new Paragraph(summary || ""),
+          new Paragraph({
+            children: [new TextRun({ text: "Skills", bold: true })],
+          }),
+          new Paragraph((skills || []).join(", ")),
+          new Paragraph({
+            children: [new TextRun({ text: "Experience", bold: true })],
+          }),
+          ...(experience || []).map(
+            (b: any) => new Paragraph("• " + (b.rewritten || b.original))
+          ),
+        ],
+      },
+    ],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  return new Response(buffer, {
+    headers: {
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "Content-Disposition": `attachment; filename="tailored_resume.docx"`,
+    },
+  });
+}
+```
+
+For **PDF**: let users click "Print → Save as PDF" on a clean printable page (`/export/preview`) with tailored content (add `@media print` CSS).
+
+### 2) Polishing
+
+- **Validation**: Ensure no hallucinated tech—add a second LLM call: "Verify that NO new technologies were added that do not exist in original resume; if found, list them." Show warning if any.
+- **Rate limit**: guard `/api/tailor` to 5 requests/hour per user (basic in-memory or Supabase)
+- **Loading & error toasts** with `react-hot-toast`
+- **Branding**: minimal hero (logo "TailorMe" / "Resume Tailor AI"), consistent Tailwind spacing
+
+### 3) Deployment
+
+1. Push to GitHub → Vercel Import → set env vars in Vercel:
+
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `OPENAI_API_KEY` or `GEMINI_API_KEY`
+
+2. Supabase storage: set service role (not needed client-side for this flow unless you upload to bucket; you can keep parsed text only in DB)
+
+3. Test live flows:
+   - Sign up / login
+   - Upload PDF
+   - Paste JD
+   - Tailor
+   - Export DOCX and print to PDF
+
+### 4) README & Screens
+
+Add **README.md** with:
+
+- 1-paragraph pitch + GIFs (Loom or screen recordings)
+- Stack: Next.js, Supabase, OpenAI/Gemini
+- Features: ATS keywords, bullet diff, cover letter, export
+- Local dev:
+  ```bash
+  npm i
+  cp .env.local.example .env.local
+  npm run dev
+  ```
+- Env var descriptions
+- Architecture diagram (ASCII is fine):
+
+```
+Client (Next.js) ──> /api/parse-resume ──> PDF/DOCX parsers
+                  └─> /api/tailor ──> LLM (OpenAI/Gemini)
+                  └─> /api/export-docx
+     ⤷ Supabase Auth + DB (resumes, job_posts, tailorings)
+```
+
+### Day 3 Acceptance ✅
+
+- Public URL on Vercel
+- New user can onboard → upload → tailor → export in < 5 minutes
+- README ready for recruiters
+
+---
+
+## Optional ½-Day Upgrades (if time remains)
+
+- **History page**: list past tailorings (title/company/date, ATS score)
+- **Templates**: "Concise / Impactful / Academic" tone switch
+- **Shareable link**: `/share/:id` (read-only of tailored resume; no auth)
+- **Simple analytics**: log time-to-tailor, # of LLM tokens (for cost tracking)
+
+---
+
+## Suggested Resume Bullets (drop-in)
+
+**Resume Tailor AI | Next.js, Supabase, OpenAI/Gemini, Tailwind**
+
+- Built an AI-powered resume tailor that ingests PDF/DOCX resumes and job descriptions, extracts ATS keywords, and generates quantified, role-aligned bullet rewrites with a live diff viewer and cover-letter drafts.
+
+- Shipped a production-ready app on Vercel with Supabase Auth/DB, achieving sub-10s tailoring latency and one-click DOCX/PDF export; added safeguards to prevent hallucinated technologies and ensure factual consistency.
