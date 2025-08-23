@@ -75,29 +75,6 @@ export default function Home() {
                 </motion.button>
               </Link>
             </motion.div>
-
-            {/* Stats */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8"
-            >
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600 mb-2">95%</div>
-                <div className="text-gray-600">ATS Success Rate</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600 mb-2">3x</div>
-                <div className="text-gray-600">More Interviews</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600 mb-2">
-                  5 min
-                </div>
-                <div className="text-gray-600">Tailoring Time</div>
-              </div>
-            </motion.div>
           </div>
         </div>
       </section>

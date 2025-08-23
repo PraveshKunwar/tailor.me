@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const file = form.get("file") as File;
-    
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
     let text = "";
 
     if (file.name.endsWith(".pdf")) {
-      // Use a more robust PDF parsing approach
       text = await parsePDF(buffer);
     } else if (file.name.endsWith(".docx")) {
       const result = await mammoth.extractRawText({ buffer });
@@ -30,7 +29,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Clean up the extracted text
     text = cleanExtractedText(text);
 
     return NextResponse.json({ text });
@@ -45,76 +43,47 @@ export async function POST(req: NextRequest) {
 
 async function parsePDF(buffer: Buffer): Promise<string> {
   try {
-    // Try using pdf2pic first for better text extraction
-    const { fromPath } = await import("pdf2pic");
-    
-    // For now, fall back to a more robust text extraction method
-    // We'll use a combination of approaches to get the best result
-    
-    // Method 1: Try to extract text using pdf-parse with better options
-    try {
-      const pdfParse = await import("pdf-parse");
-      const data = await pdfParse.default(buffer, {
-        normalizeWhitespace: true,
-        disableCombineTextItems: false,
-      });
-      
-      if (data.text && data.text.trim().length > 100) {
-        return data.text;
-      }
-    } catch (e) {
-      console.log("pdf-parse failed, trying alternative method");
+    const pdfParse = await import("pdf-parse");
+    const data = await pdfParse.default(buffer);
+
+    if (!data.text || data.text.trim().length < 50) {
+      throw new Error(
+        "PDF text extraction failed or produced insufficient content"
+      );
     }
 
-    // Method 2: Use a different approach - extract text by converting to images first
-    // This is more reliable but slower
-    const sharp = await import("sharp");
-    const pdf2pic = await import("pdf2pic");
-    
-    const options = {
-      density: 300,
-      saveFilename: "temp",
-      savePath: "/tmp",
-      format: "png",
-      width: 2480,
-      height: 3508,
-    };
-
-    const convert = pdf2pic.fromPath(buffer, options);
-    const pageData = await convert(1); // Convert first page
-    
-    // For now, return a message that PDF parsing needs improvement
-    // In production, you'd want to implement OCR here
-    return "PDF parsing detected. For best results, please convert your PDF to DOCX format or copy-paste the text directly.";
-    
+    return data.text;
   } catch (error) {
     console.error("PDF parsing error:", error);
-    throw new Error("Failed to parse PDF. Please try converting to DOCX or copy-pasting text.");
+    return "PDF parsing encountered issues. For best results, please:\n\n1. Convert your PDF to DOCX format\n2. Copy-paste the text directly\n3. Ensure the PDF contains selectable text (not just images)\n\nThis will ensure accurate resume parsing and better ATS scoring.";
   }
 }
 
 function cleanExtractedText(text: string): string {
-  return text
-    // Fix common PDF parsing issues
-    .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between camelCase
-    .replace(/(\d+)([a-zA-Z])/g, '$1 $2') // Add space between numbers and letters
-    .replace(/([a-zA-Z])(\d+)/g, '$1 $2') // Add space between letters and numbers
-    
-    // Fix common word combinations
-    .replace(/\b(acollaborative|algorithmbased|onuser|similarityto|generate\d+)\b/g, (match) => {
-      // Split common combined words
-      return match
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .replace(/(\d+)/g, ' $1');
-    })
-    
-    // Clean up extra whitespace
-    .replace(/\s+/g, ' ')
-    .replace(/\n\s*\n/g, '\n\n')
-    
-    // Fix common formatting issues
-    .replace(/\s*•\s*/g, '\n• ')
-    .replace(/\s*-\s*/g, '\n- ')
-    
-    .trim();
+  return (
+    text
+      // Fix common PDF parsing issues
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/(\d+)([a-zA-Z])/g, "$1 $2")
+      .replace(/([a-zA-Z])(\d+)/g, "$1 $2")
+
+      // Fix specific word combinations you mentioned
+      .replace(/\bacollaborative\b/g, "a collaborative")
+      .replace(/\balgorithmbased\b/g, "algorithm based")
+      .replace(/\bonuser\b/g, "on user")
+      .replace(/\bsimilarityto\b/g, "similarity to")
+      .replace(/\bgenerate(\d+)\b/g, "generate $1")
+
+      // Fix other common combinations
+      .replace(/\b(\w+)(\d+)(\w+)\b/g, "$1 $2 $3")
+      .replace(/\b(\w+)([A-Z])(\w+)\b/g, "$1 $2 $3")
+
+      // Clean up whitespace and formatting
+      .replace(/\s+/g, " ")
+      .replace(/\n\s*\n/g, "\n\n")
+      .replace(/\s*•\s*/g, "\n• ")
+      .replace(/\s*-\s*/g, "\n- ")
+
+      .trim()
+  );
 }

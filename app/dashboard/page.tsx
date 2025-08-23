@@ -447,6 +447,10 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-500">
                         PDF, DOCX, or TXT (max 10MB)
                       </p>
+                      <p className="text-xs text-blue-600 mt-2">
+                        💡 Tip: DOCX files parse best. PDFs work but may have
+                        formatting issues.
+                      </p>
                     </label>
                   </div>
                 )}
