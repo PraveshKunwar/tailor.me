@@ -1,4 +1,4 @@
-# ResumeTailor AI 🚀
+# TailorMe 🚀
 
 > Transform your resume with AI power. Upload, tailor, and optimize for ATS systems in minutes.
 
@@ -33,8 +33,8 @@
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/resume-tailor.git
-   cd resume-tailor
+   git clone https://github.com/yourusername/tailor.me-git
+   cd tailor.me
    ```
 
 2. **Install dependencies**
@@ -87,7 +87,7 @@
 - **Frontend**: Next.js 15.5.0, React 19.1.0, TypeScript 5.0
 - **Styling**: Tailwind CSS 4.1.12, Framer Motion 12.23.12
 - **Backend**: Next.js API Routes, Node.js
-- **Database**: Supabase 2.56.0 (PostgreSQL)
+- **Database**: Supabase 2.56.0
 - **Authentication**: Supabase Auth (Magic Links)
 - **AI**: Google AI 1.15.0 (Gemini)
 - **File Processing**: pdf-parse 1.1.1, mammoth 1.10.0
@@ -156,28 +156,6 @@ npm run build
 npm start
 ```
 
-## 📊 Features in Detail
-
-### Resume Parsing
-
-- **PDF Support**: Intelligent text extraction with pdf-parse
-- **DOCX Support**: Clean text extraction with mammoth
-- **TXT Support**: Direct text processing
-- **Smart Parsing**: Automatic section detection
-
-### AI Tailoring
-
-- **Keyword Extraction**: ATS keyword identification
-- **Content Rewriting**: Professional bullet point optimization
-- **Impact Quantification**: Add measurable achievements
-- **Technical Accuracy**: Maintain factual integrity
-
-### ATS Optimization
-
-- **Score Calculation**: Real-time keyword matching
-- **Performance Metrics**: Track improvement over time
-- **Optimization Tips**: AI-powered suggestions
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -185,11 +163,3 @@ npm start
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## 🙏 Acknowledgments
-
-- [Next.js](https://nextjs.org/) for the amazing framework
-- [Supabase](https://supabase.com/) for backend services
-- [Google AI](https://ai.google.dev/) for Gemini AI
-- [Tailwind CSS](https://tailwindcss.com/) for styling
-- [Framer Motion](https://www.framer.com/motion/) for animations
