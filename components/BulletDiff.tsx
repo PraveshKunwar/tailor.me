@@ -9,22 +9,36 @@ export default function BulletDiff({
   rewritten: string;
 }) {
   const parts = diffWords(original || "", rewritten || "");
+
   return (
-    <p className="text-sm leading-6">
-      {parts.map((p, i) => (
-        <span
-          key={i}
-          className={
-            p.added
-              ? "bg-green-200"
-              : p.removed
-              ? "bg-red-200 line-through"
-              : ""
-          }
-        >
-          {p.value}
-        </span>
-      ))}
-    </p>
+    <div className="text-sm leading-relaxed">
+      {parts.map((part, index) => {
+        if (part.added) {
+          return (
+            <span
+              key={index}
+              className="bg-green-100 text-green-800 px-1 py-0.5 rounded font-medium"
+            >
+              +{part.value}
+            </span>
+          );
+        }
+        if (part.removed) {
+          return (
+            <span
+              key={index}
+              className="bg-red-100 text-red-800 px-1 py-0.5 rounded line-through font-medium"
+            >
+              -{part.value}
+            </span>
+          );
+        }
+        return (
+          <span key={index} className="text-gray-700">
+            {part.value}
+          </span>
+        );
+      })}
+    </div>
   );
 }

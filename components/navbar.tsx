@@ -1,132 +1,130 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Menu, X } from "lucide-react";
 import { useState } from "react";
-import { ThemeToggle } from "./theme-toggle";
+import { motion } from "framer-motion";
+import { Menu, X, User, LogIn } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
-export function Navbar() {
+export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
 
-  const navItems = [
-    { name: "Home", href: "/" },
-    { name: "Features", href: "#features" },
-    { name: "How It Works", href: "#how-it-works" },
-    { name: "Pricing", href: "#pricing" },
-  ];
-
   return (
-    <motion.nav
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      className="fixed top-0 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 z-50"
-    >
+    <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 backdrop-blur-sm bg-white/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <motion.div
-            whileHover={{ scale: 1.05 }}
-            className="flex items-center space-x-2"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex items-center space-x-3"
           >
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">RT</span>
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              ResumeTailor
-            </span>
+            <Link href="/" className="flex items-center space-x-3 group">
+              <div className="relative w-10 h-10">
+                <Image
+                  src="/logo.png"
+                  alt="Tailor.me Logo"
+                  width={40}
+                  height={40}
+                  className="transition-transform duration-200 group-hover:scale-105"
+                />
+              </div>
+              <span className="text-2xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
+                Tailor.me
+              </span>
+            </Link>
           </motion.div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            {navItems.map((item) => (
-              <motion.a
-                key={item.name}
-                href={item.href}
-                whileHover={{ y: -2 }}
-                className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              >
-                {item.name}
-              </motion.a>
-            ))}
+            <Link
+              href="/#features"
+              className="text-gray-600 hover:text-blue-600 font-medium transition-colors duration-200"
+            >
+              Features
+            </Link>
+            <Link
+              href="/#how-it-works"
+              className="text-gray-600 hover:text-blue-600 font-medium transition-colors duration-200"
+            >
+              How It Works
+            </Link>
           </div>
 
-          {/* Right side */}
-          <div className="flex items-center space-x-4">
-            <ThemeToggle />
+          {/* Desktop CTA Buttons */}
+          <div className="hidden md:flex items-center space-x-4">
+            <Link
+              href="/login"
+              className="flex items-center space-x-2 text-gray-600 hover:text-blue-600 font-medium transition-colors duration-200"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </Link>
+            <Link href="/login" className="btn-primary">
+              Get Started
+            </Link>
+          </div>
 
-            {/* Auth Buttons */}
-            <div className="hidden md:flex items-center space-x-3">
-              <Link href="/login">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                >
-                  Sign In
-                </motion.button>
-              </Link>
-              <Link href="/login">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
-                >
-                  Get Started
-                </motion.button>
-              </Link>
-            </div>
-
-            {/* Mobile menu button */}
-            <button
+          {/* Mobile menu button */}
+          <div className="md:hidden">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
               onClick={() => setIsOpen(!isOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="p-2 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-gray-50 transition-colors duration-200"
             >
               {isOpen ? (
-                <X className="h-6 w-6" />
+                <X className="w-6 h-6" />
               ) : (
-                <Menu className="h-6 w-6" />
+                <Menu className="w-6 h-6" />
               )}
-            </button>
+            </motion.button>
           </div>
         </div>
 
         {/* Mobile Navigation */}
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-gray-200 dark:border-gray-700"
-          >
-            <div className="py-4 space-y-3">
-              {navItems.map((item) => (
-                <a
-                  key={item.name}
-                  href={item.href}
-                  className="block px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  {item.name}
-                </a>
-              ))}
-              <div className="px-4 pt-4 space-y-3">
-                <Link href="/login">
-                  <button className="w-full px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                    Sign In
-                  </button>
-                </Link>
-                <Link href="/login">
-                  <button className="w-full px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all">
-                    Get Started
-                  </button>
-                </Link>
-              </div>
+        <motion.div
+          initial={false}
+          animate={
+            isOpen ? { height: "auto", opacity: 1 } : { height: 0, opacity: 0 }
+          }
+          transition={{ duration: 0.3 }}
+          className="md:hidden overflow-hidden"
+        >
+          <div className="py-4 space-y-4 border-t border-gray-100">
+            <Link
+              href="/#features"
+              className="block text-gray-600 hover:text-blue-600 font-medium transition-colors duration-200"
+              onClick={() => setIsOpen(false)}
+            >
+              Features
+            </Link>
+            <Link
+              href="/#how-it-works"
+              className="block text-gray-600 hover:text-blue-600 font-medium transition-colors duration-200"
+              onClick={() => setIsOpen(false)}
+            >
+              How It Works
+            </Link>
+            <div className="pt-4 border-t border-gray-100 space-y-3">
+              <Link
+                href="/login"
+                className="block text-gray-600 hover:text-blue-600 font-medium transition-colors duration-200"
+                onClick={() => setIsOpen(false)}
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/login"
+                className="btn-primary block text-center"
+                onClick={() => setIsOpen(false)}
+              >
+                Get Started
+              </Link>
             </div>
-          </motion.div>
-        )}
+          </div>
+        </motion.div>
       </div>
-    </motion.nav>
+    </nav>
   );
 }
-

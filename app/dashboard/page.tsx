@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import { toast } from "react-hot-toast";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import {
   Upload,
   FileText,
@@ -16,8 +18,12 @@ import {
   Download,
   LogOut,
   User as UserIcon,
+  History,
+  AlertTriangle,
 } from "lucide-react";
 import BulletDiff from "@/components/BulletDiff";
+import ResumeHistory from "@/components/ResumeHistory";
+import { calculateATSScore, type ATSScoreResult } from "@/lib/ats-scoring";
 
 interface TailoredContent {
   summary: string;
@@ -29,6 +35,11 @@ interface TailoredContent {
   }>;
   ats_keywords: string[];
   cover_letter_md: string;
+  validation?: {
+    hasHallucinatedTech: boolean;
+    hallucinatedTechnologies: string[];
+    message: string;
+  };
 }
 
 export default function DashboardPage() {
@@ -45,6 +56,7 @@ export default function DashboardPage() {
   const [acceptedBullets, setAcceptedBullets] = useState<Set<number>>(
     new Set()
   );
+  const [resumeCount, setResumeCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -66,7 +78,7 @@ export default function DashboardPage() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_OUT") {
-        router.push("/login");
+        router.push("/");
       } else if (session?.user) {
         setUser(session.user);
       }
@@ -77,6 +89,11 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    router.push("/");
+  };
+
+  const updateResumeCount = (count: number) => {
+    setResumeCount(count);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,6 +128,13 @@ export default function DashboardPage() {
   const handleSaveResume = async () => {
     if (!resumeText.trim()) {
       toast.error("Please upload and parse a resume first");
+      return;
+    }
+
+    if (resumeCount >= 5) {
+      toast.error(
+        "Upload limit reached. Please delete an existing resume before saving a new one."
+      );
       return;
     }
 
@@ -169,17 +193,35 @@ export default function DashboardPage() {
       const response = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeText, jdText }),
+        body: JSON.stringify({ resumeText, jdText, userId: user!.id }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to tailor resume");
+        const errorData = await response.json();
+        if (response.status === 429) {
+          if (errorData.error === "Upload limit reached") {
+            toast.error(errorData.details);
+          } else {
+            toast.error(errorData.details);
+          }
+        } else {
+          throw new Error(errorData.error || "Failed to tailor resume");
+        }
+        return;
       }
 
       const result = await response.json();
       setTailoredContent(result);
-      setAtsScore(result.atsScore);
-      toast.success("Resume tailored successfully!");
+
+      const atsResult = calculateATSScore(resumeText, jdText);
+      setAtsScore(atsResult.score);
+
+      // Show validation warning if needed
+      if (result.validation?.hasHallucinatedTech) {
+        toast.error("⚠️ Technology validation warning - please review changes");
+      } else {
+        toast.success("Resume tailored successfully!");
+      }
     } catch (error) {
       toast.error("Failed to tailor resume");
       console.error(error);
@@ -245,49 +287,49 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="text-center"
         >
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-300">
-            Loading your dashboard...
-          </p>
+          <p className="text-gray-600">Loading your dashboard...</p>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">RT</span>
+              <div className="w-8 h-8 relative">
+                <Image
+                  src="/logo.png"
+                  alt="Tailor.me Logo"
+                  width={32}
+                  height={32}
+                  className="rounded-lg"
+                />
               </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                ResumeTailor
-              </span>
+              <span className="text-xl font-bold text-gray-900">Tailor.me</span>
             </div>
 
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-300">
-                <UserIcon className="w-4 h-4" />
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
                 <span>{user?.email}</span>
               </div>
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={handleSignOut}
-                className="flex items-center space-x-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="btn-primary btn-sm"
               >
-                <LogOut className="w-4 h-4" />
-                <span>Sign out</span>
+                Sign out
               </motion.button>
             </div>
           </div>
@@ -303,12 +345,58 @@ export default function DashboardPage() {
             transition={{ duration: 0.5 }}
             className="text-center"
           >
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Welcome back, {user?.email?.split("@")[0]}!
-            </h1>
-            <p className="text-gray-600 dark:text-gray-300">
+            <div className="flex items-center justify-center space-x-3 mb-6">
+              <div className="w-12 h-12 relative">
+                <Image
+                  src="/logo.png"
+                  alt="Tailor.me Logo"
+                  width={48}
+                  height={48}
+                  className="object-contain"
+                />
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Welcome back, {user?.email?.split("@")[0]}!
+              </h1>
+            </div>
+            <p className="text-gray-600">
               Ready to tailor your resume for your next opportunity?
             </p>
+            <div className="mt-4">
+              <Link
+                href="/settings"
+                className="inline-flex items-center px-4 py-2 text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                ⚙️ Account Settings
+              </Link>
+            </div>
+          </motion.div>
+
+          {/* Resume History */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
+          >
+            <div className="flex items-center space-x-3 mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Resume History
+              </h3>
+            </div>
+
+            <ResumeHistory
+              userId={user!.id}
+              onSelectResume={(resumeText) => {
+                setResumeText(resumeText);
+                toast.success("Resume loaded from history");
+              }}
+              onViewTailoring={(tailoringId) => {
+                // TODO: Implement view tailoring modal/page
+                toast.success("View tailoring feature coming soon!");
+              }}
+              onResumeCountChange={updateResumeCount}
+            />
           </motion.div>
 
           {/* Input Cards */}
@@ -321,36 +409,50 @@ export default function DashboardPage() {
               className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6"
             >
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                  <Upload className="w-5 h-5 text-white" />
-                </div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                   Resume Upload
                 </h3>
               </div>
 
               <div className="space-y-4">
-                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center hover:border-blue-500 dark:hover:border-blue-400 transition-colors">
-                  <input
-                    type="file"
-                    accept=".pdf,.docx,.txt"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="resume-upload"
-                  />
-                  <label htmlFor="resume-upload" className="cursor-pointer">
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600 dark:text-gray-300">
-                      Click to upload or drag and drop
+                {resumeCount >= 5 ? (
+                  <div className="border-2 border-dashed border-amber-300 rounded-xl p-6 text-center bg-amber-50">
+                    <div className="text-amber-600 mb-3">
+                      <span className="text-2xl">⚠️</span>
+                    </div>
+                    <p className="text-amber-800 font-medium mb-2">
+                      Upload Limit Reached
                     </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      PDF, DOCX, or TXT (max 10MB)
+                    <p className="text-amber-700 text-sm mb-3">
+                      You have reached the maximum of 5 resume uploads.
                     </p>
-                  </label>
-                </div>
+                    <p className="text-amber-600 text-sm">
+                      Please delete an existing resume from your history before
+                      uploading a new one.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.txt"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="resume-upload"
+                    />
+                    <label htmlFor="resume-upload" className="cursor-pointer">
+                      <p className="text-gray-600">
+                        Click to upload or drag and drop
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        PDF, DOCX, or TXT (max 10MB)
+                      </p>
+                    </label>
+                  </div>
+                )}
 
                 {parsing && (
-                  <div className="flex items-center justify-center space-x-2 text-blue-600 dark:text-blue-400">
+                  <div className="flex items-center justify-center space-x-2 text-blue-600">
                     <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                     <span>Parsing resume...</span>
                   </div>
@@ -362,18 +464,27 @@ export default function DashboardPage() {
                       value={resumeText}
                       onChange={(e) => setResumeText(e.target.value)}
                       rows={6}
-                      className="w-full rounded-xl border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className="w-full rounded-xl border-gray-300 bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                       placeholder="Resume text will appear here..."
                     />
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={handleSaveResume}
-                      disabled={saving}
-                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 transition-all duration-200 shadow-lg hover:shadow-xl"
-                    >
-                      {saving ? "Saving..." : "Save Resume"}
-                    </motion.button>
+                    {resumeCount >= 5 ? (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-amber-800 text-sm text-center">
+                          Cannot save new resume - upload limit reached. Please
+                          delete an existing resume first.
+                        </p>
+                      </div>
+                    ) : (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleSaveResume}
+                        disabled={saving}
+                        className="btn-primary btn-full"
+                      >
+                        {saving ? "Saving..." : "Save Resume"}
+                      </motion.button>
+                    )}
                   </div>
                 )}
               </div>
@@ -387,9 +498,6 @@ export default function DashboardPage() {
               className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6"
             >
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-600 rounded-xl flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-white" />
-                </div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                   Job Description
                 </h3>
@@ -401,14 +509,14 @@ export default function DashboardPage() {
                   onChange={(e) => setJdText(e.target.value)}
                   placeholder="Paste the job description here..."
                   rows={6}
-                  className="w-full rounded-xl border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full rounded-xl border-gray-300 bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleSaveJD}
                   disabled={saving || !jdText.trim()}
-                  className="w-full py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-blue-700 disabled:opacity-50 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  className="btn-primary btn-full"
                 >
                   {saving ? "Saving..." : "Save Job Description"}
                 </motion.button>
@@ -425,16 +533,13 @@ export default function DashboardPage() {
               className="text-center"
             >
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={handleTailorResume}
                 disabled={tailoring}
-                className="inline-flex items-center space-x-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold text-lg shadow-xl hover:shadow-2xl disabled:opacity-50 transition-all duration-300"
+                className="btn-primary btn-lg"
               >
-                <Zap className="w-5 h-5" />
-                <span>
-                  {tailoring ? "Tailoring..." : "Tailor Resume with AI"}
-                </span>
+                {tailoring ? "Tailoring..." : "Tailor Resume with AI"}
               </motion.button>
             </motion.div>
           )}
@@ -445,27 +550,26 @@ export default function DashboardPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-8"
+              className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8"
             >
               <div className="flex items-center justify-between mb-8">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                <h3 className="text-2xl font-bold text-gray-900">
                   AI Tailored Results
                 </h3>
                 <div className="flex items-center space-x-4">
                   <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="btn-primary btn-sm"
                   >
-                    <Download className="w-4 h-4 mr-2 inline" />
                     Export
                   </motion.button>
                   <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={handleSaveTailoring}
                     disabled={saving}
-                    className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 transition-all duration-200 shadow-lg hover:shadow-xl"
+                    className="btn-primary btn-sm"
                   >
                     {saving ? "Saving..." : "Save All"}
                   </motion.button>
@@ -475,14 +579,14 @@ export default function DashboardPage() {
               <div className="space-y-8">
                 {/* ATS Score */}
                 {atsScore !== null && (
-                  <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-700 dark:to-gray-600 rounded-2xl">
+                  <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl">
                     <div className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
                       {atsScore}%
                     </div>
-                    <div className="text-lg text-gray-700 dark:text-gray-200 font-medium">
+                    <div className="text-lg text-gray-700 font-medium">
                       ATS Keyword Match
                     </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                    <div className="text-sm text-gray-600 mt-2">
                       {atsScore >= 80
                         ? "Excellent match!"
                         : atsScore >= 60
@@ -492,14 +596,53 @@ export default function DashboardPage() {
                   </div>
                 )}
 
+                {/* Technology Validation Warning */}
+                {tailoredContent.validation &&
+                  tailoredContent.validation.hasHallucinatedTech && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex items-start space-x-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="text-sm font-medium text-amber-800 mb-2">
+                            ⚠️ Technology Validation Warning
+                          </h4>
+                          <p className="text-sm text-amber-700 mb-2">
+                            {tailoredContent.validation.message}
+                          </p>
+                          {tailoredContent.validation.hallucinatedTechnologies
+                            .length > 0 && (
+                            <div className="bg-white rounded-lg p-3 border border-amber-200">
+                              <p className="text-xs font-medium text-amber-800 mb-2">
+                                Technologies that were not in your original
+                                resume:
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {tailoredContent.validation.hallucinatedTechnologies.map(
+                                  (tech, index) => (
+                                    <span
+                                      key={index}
+                                      className="px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-medium"
+                                    >
+                                      {tech}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                 {/* Summary */}
                 {tailoredContent.summary && (
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
                       <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
                       Suggested Summary
                     </h4>
-                    <p className="text-gray-700 dark:text-gray-200 leading-relaxed">
+                    <p className="text-gray-700 leading-relaxed">
                       {tailoredContent.summary}
                     </p>
                   </div>
@@ -508,8 +651,8 @@ export default function DashboardPage() {
                 {/* Skills */}
                 {tailoredContent.skills &&
                   tailoredContent.skills.length > 0 && (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-6">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <div className="bg-gray-50 rounded-xl p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                         <BarChart3 className="w-5 h-5 text-blue-500 mr-2" />
                         Key Skills
                       </h4>
@@ -517,7 +660,7 @@ export default function DashboardPage() {
                         {tailoredContent.skills.map((skill, index) => (
                           <span
                             key={index}
-                            className="px-4 py-2 bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 text-blue-800 dark:text-blue-200 rounded-full text-sm font-medium"
+                            className="px-4 py-2 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 rounded-full text-sm font-medium"
                           >
                             {skill}
                           </span>
@@ -529,19 +672,18 @@ export default function DashboardPage() {
                 {/* Experience with Diffs */}
                 {tailoredContent.experience &&
                   tailoredContent.experience.length > 0 && (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-6">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center">
-                        <Zap className="w-5 h-5 text-yellow-500 mr-2" />
+                    <div className="bg-gray-50 rounded-xl p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-6">
                         Experience Rewrites
                       </h4>
                       <div className="space-y-6">
                         {tailoredContent.experience.map((item, index) => (
                           <div
                             key={index}
-                            className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-600"
+                            className="bg-white rounded-xl p-6 border border-gray-200"
                           >
                             <div className="flex items-center justify-between mb-4">
-                              <h5 className="text-lg font-medium text-gray-900 dark:text-white">
+                              <h5 className="text-lg font-medium text-gray-900">
                                 Bullet {index + 1}
                               </h5>
                               <label className="flex items-center space-x-2 cursor-pointer">
@@ -549,44 +691,55 @@ export default function DashboardPage() {
                                   type="checkbox"
                                   checked={acceptedBullets.has(index)}
                                   onChange={() => handleAcceptBullet(index)}
-                                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2"
+                                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                                 />
-                                <span className="text-sm text-gray-700 dark:text-gray-300">
+                                <span className="text-sm text-gray-700">
                                   Accept rewrite
                                 </span>
                               </label>
                             </div>
 
-                            <div className="grid md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
                               <div>
-                                <h6 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center">
-                                  <XCircle className="w-4 h-4 mr-1" />
+                                <h6 className="text-sm font-medium text-gray-500 mb-2">
                                   Original
                                 </h6>
-                                <p className="text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg p-3">
-                                  {item.original}
-                                </p>
+                                <div className="bg-gray-100 rounded-lg p-4 border-l-4 border-gray-300">
+                                  <p className="text-gray-700 leading-relaxed">
+                                    {item.original}
+                                  </p>
+                                </div>
                               </div>
 
                               <div>
-                                <h6 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center">
+                                <h6 className="text-sm font-medium text-gray-500 mb-2 flex items-center">
                                   <CheckCircle className="w-4 h-4 mr-1" />
-                                  Rewritten
+                                  Rewritten with Changes
                                 </h6>
-                                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                                <div className="bg-white rounded-lg p-4 border-l-4 border-green-500">
                                   <BulletDiff
                                     original={item.original}
                                     rewritten={item.rewritten}
                                   />
                                 </div>
+                                <div className="mt-2 text-xs text-gray-500">
+                                  <span className="inline-flex items-center mr-3">
+                                    <span className="w-3 h-3 bg-green-100 rounded mr-1"></span>
+                                    Added content
+                                  </span>
+                                  <span className="inline-flex items-center">
+                                    <span className="w-3 h-3 bg-red-100 rounded mr-1"></span>
+                                    Removed content
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                              <h6 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                              <h6 className="text-sm font-medium text-blue-800 mb-1">
                                 Why this change?
                               </h6>
-                              <p className="text-sm text-blue-700 dark:text-blue-300">
+                              <p className="text-sm text-blue-700">
                                 {item.reason}
                               </p>
                             </div>
@@ -598,13 +751,13 @@ export default function DashboardPage() {
 
                 {/* Cover Letter */}
                 {tailoredContent.cover_letter_md && (
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                       <FileText className="w-5 h-5 text-purple-500 mr-2" />
                       Cover Letter
                     </h4>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-600">
-                      <pre className="whitespace-pre-wrap text-gray-700 dark:text-gray-200 font-sans leading-relaxed">
+                    <div className="bg-white rounded-xl p-6 border border-gray-200">
+                      <pre className="whitespace-pre-wrap text-gray-700 font-sans leading-relaxed">
                         {tailoredContent.cover_letter_md}
                       </pre>
                     </div>
