@@ -25,6 +25,7 @@ interface ResumeHistoryProps {
   onSelectResume: (resumeText: string) => void;
   onViewTailoring?: (tailoringId: string) => void;
   onResumeCountChange?: (count: number) => void;
+  onResumeDeleted?: () => void;
 }
 
 export default function ResumeHistory({
@@ -32,6 +33,7 @@ export default function ResumeHistory({
   onSelectResume,
   onViewTailoring,
   onResumeCountChange,
+  onResumeDeleted,
 }: ResumeHistoryProps) {
   const [resumes, setResumes] = useState<ResumeHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +123,9 @@ export default function ResumeHistory({
 
       toast.success("Resume deleted successfully");
       await loadResumes(); // Reload the list
+      if (onResumeDeleted) {
+        onResumeDeleted();
+      }
     } catch (error) {
       console.error("Error deleting resume:", error);
       toast.error("Failed to delete resume");
