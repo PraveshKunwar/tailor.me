@@ -8,8 +8,6 @@ import {
   Target,
   TrendingUp,
   CheckCircle,
-  ArrowRight,
-  Star,
   Users,
   Clock,
 } from "lucide-react";

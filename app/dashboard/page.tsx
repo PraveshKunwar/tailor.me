@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -14,8 +14,6 @@ import {
   Zap,
   BarChart3,
   CheckCircle,
-  XCircle,
-  Download,
   LogOut,
   User as UserIcon,
   History,
@@ -26,7 +24,7 @@ import {
 } from "lucide-react";
 import BulletDiff from "@/components/BulletDiff";
 import ResumeHistory from "@/components/ResumeHistory";
-import { calculateATSScore, type ATSScoreResult } from "@/lib/ats-scoring";
+import { calculateATSScore } from "@/lib/ats-scoring";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,7 +36,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 
 interface TailoredContent {
   summary: string;
@@ -122,22 +119,7 @@ export default function DashboardPage() {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  useEffect(() => {
-    if (user) {
-      fetchMetrics();
-    }
-  }, [user]);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/");
-  };
-
-  const updateResumeCount = (count: number) => {
-    setResumeCount(count);
-  };
-
-  const fetchMetrics = async () => {
+  const fetchMetrics = useCallback(async () => {
     if (!user) return;
 
     setMetricsLoading(true);
@@ -227,8 +209,6 @@ export default function DashboardPage() {
           }).length || 0,
       };
 
-      // Get top skills from recent tailorings - enhanced version
-      const recentTailorings = tailoringsRes.data?.slice(0, 5) || [];
       const allSkills: string[] = [];
 
       // Add skills based on ATS scores and activity
@@ -271,6 +251,21 @@ export default function DashboardPage() {
     } finally {
       setMetricsLoading(false);
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchMetrics();
+    }
+  }, [user, fetchMetrics]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+
+  const updateResumeCount = (count: number) => {
+    setResumeCount(count);
   };
 
   const handleResumeTextChange = (
@@ -431,52 +426,6 @@ export default function DashboardPage() {
       newAccepted.add(index);
     }
     setAcceptedBullets(newAccepted);
-  };
-
-  const handleSaveTailoring = async () => {
-    if (!tailoredContent || !atsScore) {
-      toast.error("No tailored content to save");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const { data: resumes } = await supabase
-        .from("resumes")
-        .select("id")
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      const { data: jobPosts } = await supabase
-        .from("job_posts")
-        .select("id")
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (!resumes?.[0] || !jobPosts?.[0]) {
-        throw new Error("Resume or job post not found");
-      }
-
-      const { error } = await supabase.from("tailorings").insert({
-        user_id: user!.id,
-        resume_id: resumes[0].id,
-        job_post_id: jobPosts[0].id,
-        ats_score: atsScore,
-        tailored_json: tailoredContent,
-        cover_letter_md: tailoredContent.cover_letter_md,
-      });
-
-      if (error) throw error;
-      toast.success("Tailoring saved!");
-      fetchMetrics(); // Refresh metrics
-    } catch (error) {
-      toast.error("Failed to save tailoring");
-      console.error(error);
-    } finally {
-      setSaving(false);
-    }
   };
 
   if (loading) {
@@ -862,8 +811,7 @@ export default function DashboardPage() {
                     setCurrentResumeSaved(false);
                     toast.success("Resume loaded from history");
                   }}
-                  onViewTailoring={(tailoringId) => {
-                    // TODO: Implement view tailoring modal/page
+                  onViewTailoring={() => {
                     toast.success("View tailoring feature coming soon!");
                   }}
                   onResumeCountChange={updateResumeCount}

@@ -1,6 +1,5 @@
 export interface CleanTextOptions {
   preserveFormatting?: boolean;
-  aggressiveCleaning?: boolean;
   removeSpecialChars?: boolean;
   fixCommonIssues?: boolean;
 }
@@ -18,7 +17,6 @@ export function cleanExtractedText(
 ): CleanTextResult {
   const {
     preserveFormatting = true,
-    aggressiveCleaning = true,
     removeSpecialChars = false,
     fixCommonIssues = true,
   } = options;
@@ -161,127 +159,6 @@ function removeSpecialCharacters(text: string, issuesFixed: string[]): string {
   if (fixCount > 0) {
     issuesFixed.push(`Removed ${fixCount} types of special characters`);
   }
-
-  return cleaned;
-}
-
-function fixOCRErrors(text: string, issuesFixed: string[]): string {
-  let cleaned = text;
-
-  const ocrFixes = [
-    { pattern: /[0O]/g, replacement: "0" },
-    { pattern: /[1lI]/g, replacement: "1" },
-    { pattern: /[5S]/g, replacement: "5" },
-    { pattern: /[8B]/g, replacement: "8" },
-    { pattern: /[6G]/g, replacement: "6" },
-    { pattern: /[2Z]/g, replacement: "2" },
-    { pattern: /[3E]/g, replacement: "3" },
-    { pattern: /[4A]/g, replacement: "4" },
-    { pattern: /[7T]/g, replacement: "7" },
-    { pattern: /[9g]/g, replacement: "9" },
-  ];
-
-  let fixCount = 0;
-  ocrFixes.forEach(({ pattern, replacement }) => {
-    const before = cleaned;
-    cleaned = cleaned.replace(pattern, replacement);
-    if (cleaned !== before) {
-      fixCount++;
-    }
-  });
-
-  if (fixCount > 0) {
-    issuesFixed.push(`Fixed ${fixCount} OCR character errors`);
-  }
-
-  return cleaned;
-}
-
-function normalizeTextStructure(text: string, issuesFixed: string[]): string {
-  let cleaned = text;
-
-  const sectionNormalizations = [
-    { pattern: /\b(SUMMARY|PROFILE|OBJECTIVE)\b/gi, replacement: "SUMMARY" },
-    {
-      pattern: /\b(EXPERIENCE|WORK HISTORY|EMPLOYMENT)\b/gi,
-      replacement: "EXPERIENCE",
-    },
-    { pattern: /\b(EDUCATION|ACADEMIC)\b/gi, replacement: "EDUCATION" },
-    {
-      pattern: /\b(SKILLS|TECHNICAL SKILLS|CORE SKILLS)\b/gi,
-      replacement: "SKILLS",
-    },
-    { pattern: /\b(PROJECTS|PORTFOLIO)\b/gi, replacement: "PROJECTS" },
-    {
-      pattern: /\b(CERTIFICATIONS|CERTIFICATES)\b/gi,
-      replacement: "CERTIFICATIONS",
-    },
-    {
-      pattern: /\b(AWARDS|ACHIEVEMENTS|ACCOMPLISHMENTS)\b/gi,
-      replacement: "AWARDS",
-    },
-    { pattern: /\b(LANGUAGES|LANGUAGE SKILLS)\b/gi, replacement: "LANGUAGES" },
-    { pattern: /\b(REFERENCES|REFERENCE)\b/gi, replacement: "REFERENCES" },
-  ];
-
-  let fixCount = 0;
-  sectionNormalizations.forEach(({ pattern, replacement }) => {
-    const before = cleaned;
-    cleaned = cleaned.replace(pattern, replacement);
-    if (cleaned !== before) {
-      fixCount++;
-    }
-  });
-
-  if (fixCount > 0) {
-    issuesFixed.push(`Normalized ${fixCount} resume sections`);
-  }
-
-  return cleaned;
-}
-
-function applyAggressiveCleaning(text: string, issuesFixed: string[]): string {
-  let cleaned = text;
-
-  cleaned = cleaned
-    .replace(/[.]{2,}/g, ".")
-    .replace(/[!]{2,}/g, "!")
-    .replace(/[?]{2,}/g, "?")
-    .replace(/[,]{2,}/g, ",")
-    .replace(/[;]{2,}/g, ";")
-    .replace(/[:]{2,}/g, ":")
-    .replace(/[-]{2,}/g, "-")
-    .replace(/[_]{2,}/g, "_")
-    .replace(/[=]{2,}/g, "=")
-    .replace(/[+]{2,}/g, "+")
-    .replace(/[*]{2,}/g, "*")
-    .replace(/[#]{2,}/g, "#")
-    .replace(/[@]{2,}/g, "@")
-    .replace(/[&]{2,}/g, "&")
-    .replace(/[%]{2,}/g, "%")
-    .replace(/[$]{2,}/g, "$")
-    .replace(/[^]{2,}/g, "^")
-    .replace(/[~]{2,}/g, "~")
-    .replace(/[`]{2,}/g, "`")
-    .replace(/[|]{2,}/g, "|")
-    .replace(/[\\]{2,}/g, "\\")
-    .replace(/[/]{2,}/g, "/")
-    .replace(/[<]{2,}/g, "<")
-    .replace(/[>]{2,}/g, ">")
-    .replace(/[{]{2,}/g, "{")
-    .replace(/[}]{2,}/g, "}")
-    .replace(/[[]]{2,}/g, "[")
-    .replace(/[\]]{2,}/g, "]")
-    .replace(/[(]{2,}/g, "(")
-    .replace(/[)]{2,}/g, ")")
-    .replace(/["]{2,}/g, '"')
-    .replace(/[']{2,}/g, "'")
-    .replace(/[<,>./?]{2,}/g, ".")
-    .replace(/[~!@#$%^&*()_+={}[\]|\\:";'<>?,./]{2,}/g, ".");
-
-  cleaned = cleaned.replace(/\s+/g, " ");
-
-  issuesFixed.push("Applied aggressive cleaning rules");
 
   return cleaned;
 }

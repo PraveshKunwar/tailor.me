@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import mammoth from "mammoth";
-import {
-  cleanExtractedText,
-  validateCleanedText,
-  getCleaningStats,
-} from "@/lib/text-cleaner";
+import { cleanExtractedText } from "@/lib/text-cleaner";
 
 export const runtime = "nodejs";
 
@@ -38,7 +34,6 @@ export async function POST(req: NextRequest) {
     try {
       const cleaningResult = cleanExtractedText(text, {
         preserveFormatting: true,
-        aggressiveCleaning: false,
         removeSpecialChars: false,
         fixCommonIssues: true,
       });

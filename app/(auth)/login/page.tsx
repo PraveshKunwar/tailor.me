@@ -2,17 +2,14 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

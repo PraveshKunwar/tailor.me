@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { toast } from "react-hot-toast";
@@ -39,11 +39,7 @@ export default function ResumeHistory({
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadResumes();
-  }, [userId]);
-
-  const loadResumes = async () => {
+  const loadResumes = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -104,7 +100,11 @@ export default function ResumeHistory({
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, onResumeCountChange]);
+
+  useEffect(() => {
+    loadResumes();
+  }, [loadResumes]);
 
   const deleteResume = async (resumeId: string) => {
     try {
