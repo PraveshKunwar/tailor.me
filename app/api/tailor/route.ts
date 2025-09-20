@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { tailorWithGemini, validateTechnologies } from "@/lib/llm-gemini";
 import { supabase } from "@/lib/supabase";
 
-// In-memory rate limiting (in production, use Redis or database)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
-const RATE_LIMIT = 5; // 5 requests per hour
-const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour in milliseconds
-const MAX_UPLOADS = 5; // Maximum 5 resume uploads per user
+const RATE_LIMIT = 5;
+const RATE_LIMIT_WINDOW = 60 * 60 * 1000;
+const MAX_UPLOADS = 5;
 
 function checkRateLimit(userId: string): {
   allowed: boolean;
@@ -18,7 +17,6 @@ function checkRateLimit(userId: string): {
   const userLimit = rateLimitMap.get(userId);
 
   if (!userLimit || now > userLimit.resetTime) {
-    // Reset or initialize rate limit
     rateLimitMap.set(userId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
     return {
       allowed: true,
@@ -67,7 +65,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check upload limit
     const uploadLimit = await checkUploadLimit(userId);
     if (!uploadLimit.allowed) {
       return NextResponse.json(
@@ -81,7 +78,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check rate limit
     const rateLimit = checkRateLimit(userId);
     if (!rateLimit.allowed) {
       const resetTime = new Date(rateLimit.resetTime).toISOString();
@@ -97,10 +93,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate tailored content
     const tailoredContent = await tailorWithGemini({ resumeText, jdText });
 
-    // Validate technologies to prevent hallucination
     const validation = await validateTechnologies(resumeText, tailoredContent);
 
     return NextResponse.json({

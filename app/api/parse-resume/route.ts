@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import mammoth from "mammoth";
+import {
+  cleanExtractedText,
+  validateCleanedText,
+  getCleaningStats,
+} from "@/lib/text-cleaner";
 
 export const runtime = "nodejs";
 
@@ -29,9 +34,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    text = cleanExtractedText(text);
+    let cleanedText = text;
+    try {
+      const cleaningResult = cleanExtractedText(text, {
+        preserveFormatting: true,
+        aggressiveCleaning: false,
+        removeSpecialChars: false,
+        fixCommonIssues: true,
+      });
 
-    return NextResponse.json({ text });
+      cleanedText = cleaningResult.cleanedText;
+
+      console.log("Text cleaning completed:", {
+        originalLength: text.length,
+        cleanedLength: cleanedText.length,
+        issuesFixed: cleaningResult.issuesFixed,
+      });
+    } catch (cleaningError) {
+      console.warn("Text cleaning failed, using original text:", cleaningError);
+      cleanedText = text;
+    }
+
+    return NextResponse.json({
+      text: cleanedText,
+    });
   } catch (error) {
     console.error("File parsing error:", error);
     return NextResponse.json(
@@ -57,33 +83,4 @@ async function parsePDF(buffer: Buffer): Promise<string> {
     console.error("PDF parsing error:", error);
     return "PDF parsing encountered issues. For best results, please:\n\n1. Convert your PDF to DOCX format\n2. Copy-paste the text directly\n3. Ensure the PDF contains selectable text (not just images)\n\nThis will ensure accurate resume parsing and better ATS scoring.";
   }
-}
-
-function cleanExtractedText(text: string): string {
-  return (
-    text
-      // Fix common PDF parsing issues
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .replace(/(\d+)([a-zA-Z])/g, "$1 $2")
-      .replace(/([a-zA-Z])(\d+)/g, "$1 $2")
-
-      // Fix specific word combinations you mentioned
-      .replace(/\bacollaborative\b/g, "a collaborative")
-      .replace(/\balgorithmbased\b/g, "algorithm based")
-      .replace(/\bonuser\b/g, "on user")
-      .replace(/\bsimilarityto\b/g, "similarity to")
-      .replace(/\bgenerate(\d+)\b/g, "generate $1")
-
-      // Fix other common combinations
-      .replace(/\b(\w+)(\d+)(\w+)\b/g, "$1 $2 $3")
-      .replace(/\b(\w+)([A-Z])(\w+)\b/g, "$1 $2 $3")
-
-      // Clean up whitespace and formatting
-      .replace(/\s+/g, " ")
-      .replace(/\n\s*\n/g, "\n\n")
-      .replace(/\s*•\s*/g, "\n• ")
-      .replace(/\s*-\s*/g, "\n- ")
-
-      .trim()
-  );
 }
