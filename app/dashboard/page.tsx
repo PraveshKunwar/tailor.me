@@ -23,6 +23,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import BulletDiff from "@/components/BulletDiff";
+import FinalBullet from "@/components/FinalBullet";
 import ResumeHistory from "@/components/ResumeHistory";
 import { calculateATSScore } from "@/lib/ats-scoring";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,7 @@ export default function DashboardPage() {
   const [tailoredContent, setTailoredContent] =
     useState<TailoredContent | null>(null);
   const [atsScore, setAtsScore] = useState<number | null>(null);
+  const [modifiedAtsScore, setModifiedAtsScore] = useState<number | null>(null);
   const [acceptedBullets, setAcceptedBullets] = useState<Set<number>>(
     new Set()
   );
@@ -404,6 +406,20 @@ export default function DashboardPage() {
       const atsResult = calculateATSScore(resumeText, jdText);
       setAtsScore(atsResult.score);
 
+      // Compute initial modified ATS score based on proposed bullets
+      if (result?.experience && Array.isArray(result.experience)) {
+        const finalBulletsText = result.experience
+          .map(
+            (item: { original: string; rewritten: string }) =>
+              item.rewritten || item.original
+          )
+          .join("\n");
+        const modified = calculateATSScore(finalBulletsText, jdText);
+        setModifiedAtsScore(modified.score);
+      } else {
+        setModifiedAtsScore(null);
+      }
+
       // Show validation warning if needed
       if (result.validation?.hasHallucinatedTech) {
         toast.error("⚠️ Technology validation warning - please review changes");
@@ -427,6 +443,28 @@ export default function DashboardPage() {
     }
     setAcceptedBullets(newAccepted);
   };
+
+  // Recompute modified ATS score when accepted bullets change or tailored content/jd change
+  useEffect(() => {
+    if (!tailoredContent?.experience || !jdText.trim()) {
+      setModifiedAtsScore(null);
+      return;
+    }
+
+    const finalBulletsText = tailoredContent.experience
+      .map((item: { original: string; rewritten: string }, idx: number) => {
+        const accepted = acceptedBullets.has(idx);
+        const chosen = accepted
+          ? item.rewritten || item.original
+          : item.rewritten;
+        return chosen || item.original || "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    const modified = calculateATSScore(finalBulletsText, jdText);
+    setModifiedAtsScore(modified.score);
+  }, [acceptedBullets, tailoredContent, jdText]);
 
   if (loading) {
     return (
@@ -1058,26 +1096,53 @@ export default function DashboardPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-8">
-                  {/* ATS Score */}
-                  {atsScore !== null && (
-                    <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-0">
-                      <CardContent className="pt-6 pb-6 text-center">
-                        <div className="text-6xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-3">
-                          {atsScore}%
-                        </div>
-                        <div className="text-xl text-gray-700 font-semibold mb-2">
-                          ATS Keyword Match
-                        </div>
-                        <div className="text-sm text-gray-600 mb-4">
-                          {atsScore >= 80
-                            ? "Excellent match!"
-                            : atsScore >= 60
-                            ? "Good match"
-                            : "Needs improvement"}
-                        </div>
-                        <Progress value={atsScore} className="h-3" />
-                      </CardContent>
-                    </Card>
+                  {/* ATS Scores */}
+                  {(atsScore !== null || modifiedAtsScore !== null) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {atsScore !== null && (
+                        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-0">
+                          <CardContent className="pt-6 pb-6 text-center">
+                            <div className="text-6xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-3">
+                              {atsScore}%
+                            </div>
+                            <div className="text-xl text-gray-700 font-semibold mb-2">
+                              Current ATS Score
+                            </div>
+                            <div className="text-sm text-gray-600 mb-4">
+                              {atsScore >= 80
+                                ? "Excellent match!"
+                                : atsScore >= 60
+                                ? "Good match"
+                                : "Needs improvement"}
+                            </div>
+                            <Progress value={atsScore} className="h-3" />
+                          </CardContent>
+                        </Card>
+                      )}
+                      {modifiedAtsScore !== null && (
+                        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-0">
+                          <CardContent className="pt-6 pb-6 text-center">
+                            <div className="text-6xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent mb-3">
+                              {modifiedAtsScore}%
+                            </div>
+                            <div className="text-xl text-gray-700 font-semibold mb-2">
+                              Modified ATS Score
+                            </div>
+                            <div className="text-sm text-gray-600 mb-4">
+                              {modifiedAtsScore >= 80
+                                ? "Excellent match!"
+                                : modifiedAtsScore >= 60
+                                ? "Good match"
+                                : "Needs improvement"}
+                            </div>
+                            <Progress
+                              value={modifiedAtsScore}
+                              className="h-3"
+                            />
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
                   )}
 
                   {/* Technology Validation Warning */}
@@ -1230,6 +1295,18 @@ export default function DashboardPage() {
                                         <BulletDiff
                                           original={item.original}
                                           rewritten={item.rewritten}
+                                        />
+                                      </div>
+                                      <div className="mt-3">
+                                        <h6 className="text-sm font-medium text-gray-500 mb-2">
+                                          Final bullet
+                                        </h6>
+                                        <FinalBullet
+                                          text={
+                                            acceptedBullets.has(index)
+                                              ? item.rewritten || item.original
+                                              : item.rewritten
+                                          }
                                         />
                                       </div>
                                       <div className="mt-3 text-xs text-gray-500 flex items-center space-x-4">
